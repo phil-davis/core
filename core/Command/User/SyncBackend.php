@@ -169,11 +169,10 @@ class SyncBackend extends Command {
 		$uid = $input->getOption('uid');
 
 		if ($uid) {
-			$this->syncSingleUser($input, $output, $syncService, $backend, $uid, $missingAccountsAction);
+			return $this->syncSingleUser($input, $output, $syncService, $backend, $uid, $missingAccountsAction);
 		} else {
-			$this->syncMultipleUsers($input, $output, $syncService, $backend, $missingAccountsAction);
+			return $this->syncMultipleUsers($input, $output, $syncService, $backend, $missingAccountsAction);
 		}
-		return 0;
 	}
 
 	/**
@@ -218,6 +217,7 @@ class SyncBackend extends Command {
 		}
 
 		$p = new ProgressBar($output);
+		$ec = 0;
 		$max = null;
 		if ($backend->implementsActions(\OC_User_Backend::COUNT_USERS) && $input->getOption('showCount')) {
 			/* @phan-suppress-next-line PhanUndeclaredMethod */
@@ -225,13 +225,24 @@ class SyncBackend extends Command {
 		}
 		$p->start($max);
 
-		$syncService->run($backend, $iterator, function () use ($p) {
+		$syncService->run($backend, $iterator, function ($uid, $e) use ($p, &$ec) {
+			if ($e !== null) {
+				$ec = $ec + 1;
+			}
 			$p->advance();
 		});
 
 		$p->finish();
+
 		$output->writeln('');
 		$output->writeln('');
+
+		if ($ec > 0) {
+			$output->writeln("<error>Encountered sync errors for {$ec} users, check error log for details</error>");
+			return 1;
+		}
+
+		return 0;
 	}
 
 	/**
@@ -267,14 +278,25 @@ class SyncBackend extends Command {
 
 		$dummy = new Account(); // to prevent null pointer when writing messages
 
+		$exc = null;
 		if ($userToSync !== null) {
 			// Run the sync using the internal username if mapped
 			$output->writeln("Syncing $uid ...");
-			$syncService->run($backend, new \ArrayIterator([$userToSync]));
+			$syncService->run($backend, new \ArrayIterator([$userToSync]), function ($uid, $e) use ($output, &$exc) {
+				$exc = $e;
+			});
 		} else {
 			// Not found
 			$output->writeln("Exact match for user $uid not found in the backend.");
 			$this->handleRemovedUsers([$uid => $dummy], $input, $output, $missingAccountsAction);
+		}
+
+		if ($exc !== null) {
+			$output->writeln('');
+			$output->writeln("<error>Encountered sync error for {$uid}: {$exc->getMessage()}. Check error log for more details</error>");
+			return 1;
+		} else {
+			$output->writeln("Synced $uid ");
 		}
 
 		$output->writeln('');
@@ -282,6 +304,8 @@ class SyncBackend extends Command {
 		if ($input->getOption('re-enable')) {
 			$this->reEnableUsers([$uid => $dummy], $output);
 		}
+
+		return 0;
 	}
 	/**
 	 * @param $backend

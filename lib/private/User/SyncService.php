@@ -125,6 +125,7 @@ class SyncService {
 	public function run(UserInterface $backend, \Traversable $userIds, \Closure $callback = null) {
 		// update existing and insert new users
 		foreach ($userIds as $uid) {
+			$currentException = null;
 			try {
 				$account = $this->createOrSyncAccount($uid, $backend);
 				$uid = $account->getUserId(); // get correct case
@@ -132,14 +133,14 @@ class SyncService {
 				$this->cleanPreferences($uid);
 			} catch (\Exception $e) {
 				// Error syncing this user
+				$currentException = $e;
 				$backendClass = \get_class($backend);
-				$this->logger->error("Error syncing user with uid: $uid and backend: $backendClass");
-				$this->logger->logException($e);
+				$this->logger->logException($e, ['message' => "Error syncing user with uid: $uid and backend: $backendClass"]);
 			}
 
 			// call the callback
 			if (\is_callable($callback)) {
-				$callback($uid);
+				$callback($uid, $currentException);
 			}
 		}
 	}
