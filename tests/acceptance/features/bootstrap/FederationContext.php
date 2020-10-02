@@ -162,12 +162,14 @@ class FederationContext implements Context {
 		$share_id = SharingHelper::getLastShareIdFromResponse(
 			$this->featureContext->getResponseXml(null, __METHOD__)
 		);
+		\var_dump($share_id);
 		$this->ocsContext->userSendsHTTPMethodToOcsApiEndpointWithBody(
 			$user,
 			'POST',
 			"/apps/files_sharing/api/v1/remote_shares/pending/{$share_id}",
 			null
 		);
+		\var_dump($this->featureContext->getResponseXml()->asXML());
 		$this->featureContext->usingServer($previous);
 	}
 
